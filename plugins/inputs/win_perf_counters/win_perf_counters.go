@@ -77,7 +77,9 @@ type Win_PerfCounters struct {
 type perfobject struct {
 	ObjectName    string
 	Counters      []string
+    Counters_db_name [] string
 	Instances     []string
+    Instances_db_name [] string
 	Measurement   string
 	WarnOnMissing bool
 	FailOnMissing bool
@@ -88,7 +90,9 @@ type item struct {
 	query         string
 	objectName    string
 	counter       string
-	instance      string
+    counter_db_name string
+    instance      string
+    instance_db_name string
 	measurement   string
 	include_total bool
 	handle        PDH_HQUERY
@@ -98,8 +102,8 @@ type item struct {
 var sanitizedChars = strings.NewReplacer("/sec", "_persec", "/Sec", "_persec",
 	" ", "_", "%", "Percent", `\`, "")
 
-func (m *Win_PerfCounters) AddItem(query string, objectName string, counter string, instance string,
-	measurement string, include_total bool) error {
+func (m *Win_PerfCounters) AddItem(query string, objectName string, counter string, counter_db_name string, instance string,
+	instance_db_name string, measurement string, include_total bool) error {
 
 	var handle PDH_HQUERY
 	var counterHandle PDH_HCOUNTER
@@ -117,7 +121,7 @@ func (m *Win_PerfCounters) AddItem(query string, objectName string, counter stri
 		return errors.New(PdhFormatError(ret))
 	}
 
-	newItem := &item{query, objectName, counter, instance, measurement,
+	newItem := &item{query, objectName, counter, counter_db_name, instance, instance_db_name, measurement,
 		include_total, handle, counterHandle}
 	m.itemCache = append(m.itemCache, newItem)
 
@@ -137,9 +141,18 @@ func (m *Win_PerfCounters) ParseConfig() error {
 
 	if len(m.Object) > 0 {
 		for _, PerfObject := range m.Object {
-			for _, counter := range PerfObject.Counters {
-				for _, instance := range PerfObject.Instances {
+			for counter_idx, counter := range PerfObject.Counters {
+				for instance_idx, instance := range PerfObject.Instances {
 					objectname := PerfObject.ObjectName
+                    counter_db_name := counter
+                    instance_db_name := instance
+                    // use defined db name
+                    if objectname == "Processor" {
+                        counter_db_name = PerfObject.Counters_db_name[counter_idx]
+                        fmt.Printf("counter[%d]: %s, counter_db_name: %s\n", counter_idx, counter, counter_db_name)
+                        instance_db_name = PerfObject.Instances_db_name[instance_idx]
+                        fmt.Printf("instance[%d]: %s, instance_db_name: %s\n",instance_idx ,instance, instance_db_name)
+                    }
 
 					if instance == "------" {
 						query = "\\" + objectname + "\\" + counter
@@ -147,8 +160,8 @@ func (m *Win_PerfCounters) ParseConfig() error {
 						query = "\\" + objectname + "(" + instance + ")\\" + counter
 					}
 
-					err := m.AddItem(query, objectname, counter, instance,
-						PerfObject.Measurement, PerfObject.IncludeTotal)
+					err := m.AddItem(query, objectname, counter, counter_db_name, instance,
+						instance_db_name, PerfObject.Measurement, PerfObject.IncludeTotal)
 
 					if err == nil {
 						if m.PrintValid {
@@ -234,10 +247,10 @@ func (m *Win_PerfCounters) Gather(acc telegraf.Accumulator) error {
 						fields := make(map[string]interface{})
 						tags := make(map[string]string)
 						if s != "" {
-							tags["instance"] = s
+							tags[metric.instance_db_name] = s
 						}
-						tags["objectname"] = metric.objectName
-						fields[sanitizedChars.Replace(metric.counter)] =
+						// tags["objectname"] = metric.objectName
+						fields[metric.counter_db_name] =
 							float32(c.FmtValue.DoubleValue)
 
 						measurement := sanitizedChars.Replace(metric.measurement)

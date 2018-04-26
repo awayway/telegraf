@@ -36,7 +36,7 @@ func NewAgent(config *config.Config) (*Agent, error) {
 			a.Config.Agent.Hostname = hostname
 		}
 
-		config.Tags["host"] = a.Config.Agent.Hostname
+		config.Tags["agenthost"] = a.Config.Agent.Hostname
 	}
 
 	return a, nil
